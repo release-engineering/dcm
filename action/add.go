@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/operator-framework/operator-registry/alpha/action"
+	"github.com/operator-framework/operator-registry/alpha/declcfg"
+	"github.com/operator-framework/operator-registry/alpha/property"
 	"github.com/operator-framework/operator-registry/pkg/image"
 	"github.com/operator-framework/operator-registry/pkg/registry"
-	"github.com/operator-framework/operator-registry/public/action"
-	"github.com/operator-framework/operator-registry/public/declcfg"
-	"github.com/operator-framework/operator-registry/public/property"
 	"github.com/sirupsen/logrus"
 )
 
@@ -62,78 +62,18 @@ func (a Add) Run(ctx context.Context) error {
 		return fmt.Errorf("load declarative configs: %v", err)
 	}
 
-	switch l := len(fromCfg.Packages); l {
-	case 0:
+	switch l := len(fromCfg.Packages); {
+	case l == 0:
 		a.Log.Infof("Initializing new package %q for bundle %q", addBundle.Package, addBundle.Name)
 		fromCfg, err = initDeclcfgFromBundle(ctx, reg, *addBundle)
-	case 1:
+	case l == 1:
 		a.Log.Infof("Adding bundle %q to existing package %q", addBundle.Name, addBundle.Package)
-		bundleMap := map[string]bundleProps{}
-		for _, b := range fromCfg.Bundles {
-			b := b
-			if _, ok := bundleMap[b.Name]; ok {
-				return fmt.Errorf("duplicate bundle %q", b.Name)
-			}
-			if b.Package != addBundle.Package {
-				return fmt.Errorf("found package %q in bundle %q, expected %q", b.Package, b.Name, addBundle.Package)
-			}
-			props, err := property.Parse(b.Properties)
-			if err != nil {
-				return fmt.Errorf("parse properties for bundle %q: %v", b.Name, err)
-			}
-			bundleMap[b.Name] = bundleProps{Bundle: &b, Properties: *props}
-		}
-		if _, ok := bundleMap[addBundle.Name]; ok {
-			for _, b := range bundleMap {
-				for _, ch := range b.Channels {
-					if ch.Replaces == addBundle.Name {
-						return fmt.Errorf("can't overwrite bundle %q, it is replaced by bundle %q", addBundle.Name, b.Name)
-					}
-				}
-				for _, skips := range b.Skips {
-					if string(skips) == addBundle.Name {
-						return fmt.Errorf("can't overwrite bundle %q, it is skipped by bundle %q", addBundle.Name, b.Name)
-					}
-				}
-			}
-			if !a.OverwriteLatest {
-				return fmt.Errorf("can't overwrite bundle %q, --overwrite-latest not enabled", addBundle.Name)
-			}
-		}
-		props, err := property.Parse(addBundle.Properties)
-		if err != nil {
-			return fmt.Errorf("parse properties for bundle %q: %v", addBundle.Name, err)
-		}
-		bundleMap[addBundle.Name] = bundleProps{Bundle: addBundle, Properties: *props}
-
-		heads, err := getHeads(bundleMap)
-		if err != nil {
-			return fmt.Errorf("get channel heads: %v", err)
-		}
-
-		a.Log.Infof("Adding channels to descendents across package %q", addBundle.Package)
-		for _, head := range heads {
-			a.addChannelsToDescendents(bundleMap, head)
-		}
-
-		fromCfg.Bundles = []declcfg.Bundle{}
-		for _, b := range bundleMap {
-			b.Bundle.Properties = property.Deduplicate(b.Bundle.Properties)
-			fromCfg.Bundles = append(fromCfg.Bundles, *b.Bundle)
-		}
-		sort.Slice(fromCfg.Bundles, func(i, j int) bool {
-			return fromCfg.Bundles[i].Name < fromCfg.Bundles[j].Name
-		})
-		defCh, err := defaultChannel(ctx, reg, bundleMap)
-		if err != nil {
-			return fmt.Errorf("set default channel: %v", err)
-		}
-		if fromCfg.Packages[0].DefaultChannel != defCh {
-			a.Log.Infof("Updating default channel for package %q to %q", addBundle.Package, defCh)
-			fromCfg.Packages[0].DefaultChannel = defCh
-		}
+		fromCfg, err = a.addBundleToPackage(ctx, reg, *fromCfg, *addBundle)
 	default:
 		return fmt.Errorf("found %d olm.package blobs in %q, expected 1", len(fromCfg.Packages), packageDir)
+	}
+	if err != nil {
+		return err
 	}
 	a.Log.Infof("Writing updated declarative config for package %q", addBundle.Package)
 	return writeCfg(*fromCfg, packageDir)
@@ -195,6 +135,79 @@ func initDeclcfgFromBundle(ctx context.Context, reg image.Registry, bundle declc
 		Packages: []declcfg.Package{*pkg},
 		Bundles:  []declcfg.Bundle{bundle},
 	}, nil
+}
+
+func (a Add) addBundleToPackage(ctx context.Context, reg image.Registry, cfg declcfg.DeclarativeConfig, addBundle declcfg.Bundle) (*declcfg.DeclarativeConfig, error) {
+	bundleMap := map[string]bundleProps{}
+	for _, b := range cfg.Bundles {
+		b := b
+		if _, ok := bundleMap[b.Name]; ok {
+			return nil, fmt.Errorf("duplicate bundle %q", b.Name)
+		}
+		if b.Package != addBundle.Package {
+			return nil, fmt.Errorf("found package %q in bundle %q, expected %q", b.Package, b.Name, addBundle.Package)
+		}
+		bp, err := newBundleProps(&b)
+		if err != nil {
+			return nil, err
+		}
+		bundleMap[b.Name] = *bp
+	}
+	if _, ok := bundleMap[addBundle.Name]; ok {
+		for _, b := range bundleMap {
+			for _, ch := range b.Channels {
+				if ch.Replaces == addBundle.Name {
+					return nil, fmt.Errorf("can't overwrite bundle %q, it is replaced by bundle %q", addBundle.Name, b.Name)
+				}
+			}
+			for _, skips := range b.Skips {
+				if string(skips) == addBundle.Name {
+					return nil, fmt.Errorf("can't overwrite bundle %q, it is skipped by bundle %q", addBundle.Name, b.Name)
+				}
+			}
+		}
+		if !a.OverwriteLatest {
+			return nil, fmt.Errorf("can't overwrite bundle %q, --overwrite-latest not enabled", addBundle.Name)
+		}
+	}
+
+	bp, err := newBundleProps(&addBundle)
+	if err != nil {
+		return nil, err
+	}
+	bundleMap[addBundle.Name] = *bp
+
+	if err := addSubstitutesFor(bundleMap, *bp); err != nil {
+		return nil, fmt.Errorf("error processing substitutesFor: %v", err)
+	}
+
+	heads, err := getHeads(bundleMap)
+	if err != nil {
+		return nil, fmt.Errorf("get channel heads: %v", err)
+	}
+
+	a.Log.Infof("Adding channels to descendents across package %q", addBundle.Package)
+	for _, head := range heads {
+		a.addChannelsToDescendents(bundleMap, head)
+	}
+
+	cfg.Bundles = []declcfg.Bundle{}
+	for _, b := range bundleMap {
+		b.Bundle.Properties = property.Deduplicate(b.Bundle.Properties)
+		cfg.Bundles = append(cfg.Bundles, *b.Bundle)
+	}
+	sort.Slice(cfg.Bundles, func(i, j int) bool {
+		return cfg.Bundles[i].Name < cfg.Bundles[j].Name
+	})
+	defCh, err := getDefaultChannel(ctx, reg, bundleMap)
+	if err != nil {
+		return nil, fmt.Errorf("set default channel: %v", err)
+	}
+	if cfg.Packages[0].DefaultChannel != defCh {
+		a.Log.Infof("Updating default channel for package %q to %q", addBundle.Package, defCh)
+		cfg.Packages[0].DefaultChannel = defCh
+	}
+	return &cfg, nil
 }
 
 func (a Add) addChannelsToDescendents(bundleMap map[string]bundleProps, cur bundleProps) {

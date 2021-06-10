@@ -9,12 +9,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/blang/semver/v4"
+	"github.com/blang/semver"
+	"github.com/operator-framework/operator-registry/alpha/declcfg"
+	"github.com/operator-framework/operator-registry/alpha/property"
 	"github.com/operator-framework/operator-registry/pkg/image"
 	"github.com/operator-framework/operator-registry/pkg/image/containerdregistry"
 	"github.com/operator-framework/operator-registry/pkg/lib/bundle"
-	"github.com/operator-framework/operator-registry/public/declcfg"
-	"github.com/operator-framework/operator-registry/public/property"
+	libsemver "github.com/operator-framework/operator-registry/pkg/lib/semver"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -28,6 +29,15 @@ func nullLogger() *logrus.Entry {
 type bundleProps struct {
 	*declcfg.Bundle
 	property.Properties
+}
+
+func newBundleProps(b *declcfg.Bundle) (*bundleProps, error) {
+	props, err := property.Parse(b.Properties)
+	if err != nil {
+		return nil, fmt.Errorf("parse properties for bundle %q: %v", b.Name, err)
+	}
+	bp := &bundleProps{Bundle: b, Properties: *props}
+	return bp, nil
 }
 
 func writeCfg(cfg declcfg.DeclarativeConfig, dir string) error {
@@ -129,7 +139,7 @@ func removeReplacesFor(bundleMap map[string]bundleProps, name string) error {
 	return nil
 }
 
-func defaultChannel(ctx context.Context, reg image.Registry, bundleMap map[string]bundleProps) (string, error) {
+func getDefaultChannel(ctx context.Context, reg image.Registry, bundleMap map[string]bundleProps) (string, error) {
 	type bundleVersion struct {
 		version semver.Version
 		count   int
@@ -164,28 +174,36 @@ func defaultChannel(ctx context.Context, reg image.Registry, bundleMap map[strin
 				continue
 			}
 
-			c := current.version.Compare(head.version)
-			if c < 0 {
-				continue
+			c, err := libsemver.BuildIdCompare(current.version, head.version)
+			if err != nil {
+				return "", fmt.Errorf("compare versions: %v", err)
 			}
-			if c == 0 {
+			switch {
+			case c < 0:
+				continue
+			case c == 0:
 				// We have a duplicate version, add the count
 				current.count += head.count
 			}
-
 			// Current >= head
 			heads[channel.Name] = current
 		}
 
 		// Set max if bundle is greater
-		c := current.version.Compare(maxVersion.version)
-		if c < 0 {
-			continue
+		c, err := libsemver.BuildIdCompare(current.version, maxVersion.version)
+		if err != nil {
+			return "", fmt.Errorf("compare versions: %v", err)
 		}
-		if c == 0 {
+		switch {
+		case c < 0:
+			continue
+		case c == 0:
 			current.count += maxVersion.count
 		}
 
+		// Current >= maxVersion
+		//  - Get the default channel for the bundle
+		//  - If it's set, update the default channel we'll return for the package.
 		if err := reg.Pull(ctx, image.SimpleReference(b.Image)); err != nil {
 			return "", fmt.Errorf("pull image %q: %v", b.Image, err)
 		}
@@ -195,7 +213,6 @@ func defaultChannel(ctx context.Context, reg image.Registry, bundleMap map[strin
 		}
 		bundleDefChannel := labels[bundle.ChannelDefaultLabel]
 		if bundleDefChannel != "" {
-			// Current >= maxVersion
 			maxVersion = current
 			defaultCh = bundleDefChannel
 		}
@@ -208,4 +225,246 @@ func defaultChannel(ctx context.Context, reg image.Registry, bundleMap map[strin
 		return "", fmt.Errorf("unable to determine default channel among channel heads: %+v", heads)
 	}
 	return defaultCh, nil
+}
+
+func addSubstitutesFor(bundleMap map[string]bundleProps, bundle bundleProps) error {
+	subsForMap, err := buildSubsForMap(bundleMap)
+	if err != nil {
+		return err
+	}
+
+	substitutesFor := getSubstitutesFor(bundle)
+	if substitutesFor != "" {
+		if len(bundle.Packages) != 1 {
+			return fmt.Errorf("bundle %q has %d %q properties, expected 1", bundle.Name, len(bundle.Packages), property.TypePackage)
+		}
+		currentSubstitutionVersion, err := semver.Parse(bundle.Packages[0].Version)
+		if err != nil {
+			return err
+		}
+
+		// Check if any other bundle substitutes for the same bundle
+		otherSubstitutions := subsForMap[substitutesFor]
+		for len(otherSubstitutions) > 0 {
+			otherSubstitution := otherSubstitutions[0]
+			otherSubstitutions = otherSubstitutions[1:]
+
+			if otherSubstitution.Name != bundle.Name {
+				if len(otherSubstitution.Packages) != 1 {
+					return fmt.Errorf("bundle %q has %d %q properties, expected 1", otherSubstitution.Name, len(otherSubstitution.Packages), property.TypePackage)
+				}
+				otherSubstitutionVersion, err := semver.Parse(otherSubstitution.Packages[0].Version)
+				if err != nil {
+					return err
+				}
+
+				// Compare versions
+				c, err := libsemver.BuildIdCompare(otherSubstitutionVersion, currentSubstitutionVersion)
+				if err != nil {
+					return err
+				}
+				if c < 0 {
+					// Update the currentSubstitution substitutesFor to point to otherSubstitution
+					// since it is latest
+					bundle.SubstitutesFors = []property.SubstitutesFor{property.SubstitutesFor(otherSubstitution.Name)}
+					for pi, p := range bundle.Bundle.Properties {
+						if p.Type == property.TypeSubstitutesFor {
+							bundle.Bundle.Properties[pi] = property.MustBuildSubstitutesFor(otherSubstitution.Name)
+						}
+					}
+					bundleMap[bundle.Name] = bundle
+					moreSubstitutions := subsForMap[otherSubstitution.Name]
+					otherSubstitutions = append(otherSubstitutions, moreSubstitutions...)
+				} else if c > 0 {
+					// Update the otherSubstitution's substitutesFor to point to csvName
+					// Since it is the latest
+					otherSubstitution.SubstitutesFors = []property.SubstitutesFor{property.SubstitutesFor(bundle.Name)}
+					for pi, p := range otherSubstitution.Bundle.Properties {
+						if p.Type == property.TypeSubstitutesFor {
+							otherSubstitution.Bundle.Properties[pi] = property.MustBuildSubstitutesFor(bundle.Name)
+						}
+					}
+					bundleMap[otherSubstitution.Name] = otherSubstitution
+
+					// Update the otherSubstitution's skips to include csvName and its skips
+					skips := append(bundle.Skips, property.Skips(bundle.Name))
+					otherSubSkipsMap := map[property.Skips]struct{}{}
+					for _, s := range otherSubstitution.Skips {
+						otherSubSkipsMap[s] = struct{}{}
+					}
+					for _, s := range skips {
+						if _, ok := otherSubSkipsMap[s]; !ok {
+							otherSubstitution.Skips = append(otherSubstitution.Skips, s)
+							otherSubstitution.Bundle.Properties = append(otherSubstitution.Bundle.Properties, property.MustBuildSkips(string(s)))
+						}
+					}
+
+					moreSubstitutions := subsForMap[bundle.Name]
+					if len(moreSubstitutions) > 1 {
+						return fmt.Errorf("programmer error: more than one substitution pointing to %s", bundle.Name)
+					}
+				} else {
+					// the versions are equal
+					return fmt.Errorf("cannot determine latest substitution because of duplicate versions")
+				}
+			}
+		}
+	}
+
+	// Rebuild subForMap
+	subsForLinear, err := buildSubsForLinear(bundleMap)
+	if err != nil {
+		return err
+	}
+
+	// Get latest substitutesFor value of the current bundle
+	substitutesFor = getSubstitutesFor(bundle)
+	if substitutesFor != "" {
+		// Update any replaces that reference the substituted-for bundle
+		for _, b := range bundleMap {
+			for chi, ch := range b.Channels {
+				if ch.Replaces == substitutesFor {
+					b.Channels[chi].Replaces = bundle.Name
+
+					chCount := 0
+					for pi, p := range b.Bundle.Properties {
+						if p.Type == property.TypeChannel && chCount == chi {
+							b.Bundle.Properties[pi] = property.MustBuildChannel(ch.Name, bundle.Name)
+							chCount++
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// If the substituted-for of the current bundle substitutes for another bundle
+	// it should also be added to the skips of the substitutesFor bundle
+	for substitutesFor != "" {
+		bundle.Skips = append(bundle.Skips, property.Skips(substitutesFor))
+		substitutesFor = getSubstitutesFor(bundleMap[substitutesFor])
+	}
+
+	// If the substitution (or substitution of substitution) is added before the
+	// substituted for bundle, (i.e. the bundle being added is substituted for by
+	// another bundle) then transfer the skips from the substitutedFor bundle (this
+	// bundle) over to the substitution's skips
+	substitutesForBundle, ok := subsForLinear[bundle.Name]
+	for ok {
+		// TODO(joelanford): refactor into a function because this is used in a couple of places.
+		skips := append(bundle.Skips, property.Skips(bundle.Name))
+		subSkipMap := map[property.Skips]struct{}{}
+		for _, s := range substitutesForBundle.Skips {
+			subSkipMap[s] = struct{}{}
+		}
+		for _, s := range skips {
+			if _, ok := subSkipMap[s]; !ok {
+				substitutesForBundle.Skips = append(substitutesForBundle.Skips, s)
+				substitutesForBundle.Bundle.Properties = append(substitutesForBundle.Bundle.Properties, property.MustBuildSkips(string(s)))
+			}
+		}
+		substitutesForBundle, ok = subsForLinear[substitutesForBundle.Name]
+	}
+
+	// Bundles that skip a bundle that is substituted for
+	// should also skip the substituted-for bundle
+	if len(bundle.Skips) != 0 {
+		substitutesSkips := make(map[property.Skips]struct{})
+		skipsOverwrite := []property.Skips{}
+		for _, skip := range bundle.Skips {
+			substitutesSkips[skip] = struct{}{}
+			substitutesForBundle, ok := subsForLinear[string(skip)]
+			for ok {
+				// consume the slice of substitutions
+				substitutesFor = substitutesForBundle.Name
+				// shouldn't skip yourself
+				if substitutesFor == bundle.Name {
+					break
+				}
+				substitutesSkips[property.Skips(substitutesFor)] = struct{}{}
+				substitutesForBundle, ok = subsForLinear[substitutesFor]
+			}
+		}
+		for s := range substitutesSkips {
+			skipsOverwrite = append(skipsOverwrite, s)
+		}
+		bundle.Skips = skipsOverwrite
+	}
+
+	// If the bundle being added replaces a bundle that is substituted for
+	// (for example it was the previous head of the channel), change
+	// the replaces to the substituted-for bundle
+	replacesSet := map[string]struct{}{}
+	replaces := ""
+	for _, ch := range bundle.Channels {
+		replacesSet[ch.Replaces] = struct{}{}
+		replaces = ch.Replaces
+	}
+	if len(replacesSet) > 1 {
+		return fmt.Errorf("bundle %q can only have 1 replaces value, found %d", len(replacesSet))
+	}
+	if replaces != "" {
+		substitutesForBundle, ok := subsForLinear[replaces]
+		for ok {
+			// update the replaces to a newer substitution
+			replaces = substitutesForBundle.Name
+			// try to get the substitution of the substitution
+			substitutesForBundle, ok = subsForLinear[replaces]
+		}
+	}
+
+	// update channel in bundle
+	for i := range bundle.Channels {
+		bundle.Channels[i].Replaces = replaces
+	}
+	chCount := 0
+	for pi, p := range bundle.Bundle.Properties {
+		if p.Type == property.TypeChannel {
+			bundle.Bundle.Properties[pi] = property.MustBuildChannel(bundle.Channels[chCount].Name, replaces)
+			chCount++
+		}
+	}
+
+	for _, s := range bundle.Skips {
+		bundle.Bundle.Properties = append(bundle.Bundle.Properties, property.MustBuildSkips(string(s)))
+	}
+	return nil
+}
+
+func buildSubsForMap(bundleMap map[string]bundleProps) (map[string][]bundleProps, error) {
+	subsForMap := map[string][]bundleProps{}
+	for _, b := range bundleMap {
+		if len(b.Properties.SubstitutesFors) > 1 {
+			return nil, fmt.Errorf("bundle %q has %d %q properties, expected no more than 1", b.Name, len(b.Properties.SubstitutesFors), property.TypeSubstitutesFor)
+		}
+		if len(b.Properties.SubstitutesFors) == 1 {
+			subsFor := string(b.Properties.SubstitutesFors[0])
+			if subsFor != "" {
+				subsForMap[subsFor] = append(subsForMap[subsFor], b)
+			}
+		}
+	}
+	return subsForMap, nil
+}
+
+func buildSubsForLinear(bundleMap map[string]bundleProps) (map[string]bundleProps, error) {
+	subsForMap, err := buildSubsForMap(bundleMap)
+	if err != nil {
+		return nil, err
+	}
+	linear := map[string]bundleProps{}
+	for k, v := range subsForMap {
+		if len(v) != 1 {
+			return nil, fmt.Errorf("programmer error: expected exactly one substitution pointing to %q", k)
+		}
+		linear[k] = v[0]
+	}
+	return linear, nil
+}
+
+func getSubstitutesFor(b bundleProps) string {
+	if len(b.Properties.SubstitutesFors) == 1 {
+		return string(b.Properties.SubstitutesFors[0])
+	}
+	return ""
 }

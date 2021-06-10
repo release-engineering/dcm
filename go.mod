@@ -2,11 +2,11 @@ module github.com/joelanford/dcm
 
 go 1.16
 
-replace github.com/operator-framework/operator-registry => github.com/joelanford/operator-registry v1.12.2-0.20210520155234-4ce23698cf9c
+replace github.com/operator-framework/operator-registry => github.com/joelanford/operator-registry v1.12.2-0.20210609210934-6fe59eb4c116
 
 require (
 	github.com/Shopify/logrus-bugsnag v0.0.0-20171204204709-577dee27f20d // indirect
-	github.com/blang/semver/v4 v4.0.0
+	github.com/blang/semver v3.5.1+incompatible
 	github.com/bshuster-repo/logrus-logstash-hook v1.0.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.7 // indirect
 	github.com/operator-framework/operator-registry v0.0.0-00010101000000-000000000000

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/operator-framework/operator-registry/public/declcfg"
-	"github.com/operator-framework/operator-registry/public/property"
+	"github.com/operator-framework/operator-registry/alpha/declcfg"
+	"github.com/operator-framework/operator-registry/alpha/property"
 	"github.com/sirupsen/logrus"
 )
 
@@ -63,11 +63,11 @@ func (d DeprecateTruncate) Run(ctx context.Context) error {
 		if b.Package == bundlePackage {
 			packageCfg.Bundles = append(packageCfg.Bundles, b)
 		}
-		props, err := property.Parse(b.Properties)
+		bp, err := newBundleProps(&b)
 		if err != nil {
-			return fmt.Errorf("parse properties for bundle %q: %v", b.Name, err)
+			return err
 		}
-		bundleMap[b.Name] = bundleProps{&b, *props}
+		bundleMap[b.Name] = *bp
 	}
 
 	heads, err := getHeads(bundleMap)
