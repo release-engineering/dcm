@@ -12,8 +12,9 @@ func NewCmd() *cobra.Command {
 		dp action.DeprecateTruncate
 	)
 	cmd := &cobra.Command{
-		Use:  "deprecatetruncate <dcDir> <bundleImage>",
-		Args: cobra.ExactArgs(2),
+		Use:   "deprecatetruncate <dcDir> <bundleImage>",
+		Short: "Deprecate a bundle from a declarative config directory",
+		Args:  cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			dp.FromDir = args[0]
 			dp.BundleImage = args[1]

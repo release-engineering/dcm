@@ -16,8 +16,9 @@ func NewCmd() *cobra.Command {
 		format  = "json"
 	)
 	cmd := &cobra.Command{
-		Use:  "migrate <indexImage>",
-		Args: cobra.ExactArgs(1),
+		Use:   "migrate <indexImage>",
+		Short: "Migrate an index image to a declarative config directory",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			migrate.IndexImage = args[0]
 
