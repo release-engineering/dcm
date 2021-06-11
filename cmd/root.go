@@ -5,6 +5,7 @@ import (
 
 	"github.com/joelanford/dcm/cmd/add"
 	"github.com/joelanford/dcm/cmd/deprecatetruncate"
+	"github.com/joelanford/dcm/cmd/migrate"
 )
 
 func Run() error {
@@ -14,6 +15,7 @@ func Run() error {
 	root.AddCommand(
 		add.NewCmd(),
 		deprecatetruncate.NewCmd(),
+		migrate.NewCmd(),
 	)
 	return root.Execute()
 }
