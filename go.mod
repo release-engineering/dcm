@@ -2,7 +2,7 @@ module github.com/joelanford/dcm
 
 go 1.16
 
-replace github.com/operator-framework/operator-registry => github.com/joelanford/operator-registry v1.12.2-0.20210609210934-6fe59eb4c116
+replace github.com/operator-framework/operator-registry => github.com/joelanford/operator-registry v1.12.2-0.20210611160053-babcf9d97125
 
 require (
 	github.com/Shopify/logrus-bugsnag v0.0.0-20171204204709-577dee27f20d // indirect

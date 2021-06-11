@@ -34,7 +34,10 @@ func (m Migrate) Run(ctx context.Context) error {
 		return fmt.Errorf("output dir %q must be empty", m.OutputDir)
 	}
 
-	r := action.Render{Refs: []string{m.IndexImage}}
+	r := action.Render{
+		Refs:      []string{m.IndexImage},
+		AllowMask: action.RefSqliteImage,
+	}
 	if m.Registry != nil {
 		r.Registry = m.Registry
 	}

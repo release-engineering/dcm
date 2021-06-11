@@ -447,8 +447,8 @@ github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af/go.mod h1:Nht
 github.com/joefitzgerald/rainbow-reporter v0.1.0/go.mod h1:481CNgqmVHQZzdIbN52CupLJyoVwB10FQ/IQlF1pdL8=
 github.com/joelanford/ignore v0.0.0-20210607151042-0d25dc18b62d h1:A2/B900ip/Z20TzkLeGRNy1s6J2HmH9AmGt+dHyqb4I=
 github.com/joelanford/ignore v0.0.0-20210607151042-0d25dc18b62d/go.mod h1:7HQupe4vyNxMKXmM5DFuwXHsqwMyglcYmZBtlDPIcZ8=
-github.com/joelanford/operator-registry v1.12.2-0.20210609210934-6fe59eb4c116 h1:PEmeZuQgJmboYqiiJ1ZWSHpudU0qXKvGsD/36piJAqs=
-github.com/joelanford/operator-registry v1.12.2-0.20210609210934-6fe59eb4c116/go.mod h1:k0rWVT23QoN1prs9tX8PHjRVXz6FMZfUJ5EIZSrqh9E=
+github.com/joelanford/operator-registry v1.12.2-0.20210611160053-babcf9d97125 h1:B2qsx19nRp7jAjeOkXwoxv36mRtyvuc1Xy0uGy6XNqg=
+github.com/joelanford/operator-registry v1.12.2-0.20210611160053-babcf9d97125/go.mod h1:k0rWVT23QoN1prs9tX8PHjRVXz6FMZfUJ5EIZSrqh9E=
 github.com/jonboulle/clockwork v0.1.0/go.mod h1:Ii8DK3G1RaLaWxj9trq07+26W01tbo22gdxWY5EU2bo=
 github.com/json-iterator/go v1.1.6/go.mod h1:+SdeFBvtyEkXs7REEP0seUULqWtbJapLOCVDaaPEHmU=
 github.com/json-iterator/go v1.1.7/go.mod h1:KdQUCv79m/52Kvf8AW2vK1V8akMuk1QjK/uOdHXbAo4=
