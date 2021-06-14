@@ -99,7 +99,7 @@ func writeToFS(cfg declcfg.DeclarativeConfig, w fsWriter, rootDir string, writeF
 		if err := w.MkdirAll(pkgDir, 0777); err != nil {
 			return err
 		}
-		filename := filepath.Join(pkgDir, fmt.Sprintf("%s.yaml", p.Name))
+		filename := filepath.Join(pkgDir, "index.yaml")
 		if err := writeFile(fcfg, w, filename, writeFunc); err != nil {
 			return err
 		}
