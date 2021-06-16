@@ -368,27 +368,31 @@ func addSubstitutesFor(bundleMap map[string]bundleProps, bundle bundleProps) err
 
 	// Bundles that skip a bundle that is substituted for
 	// should also skip the substituted-for bundle
-	if len(bundle.Skips) != 0 {
-		substitutesSkips := make(map[property.Skips]struct{})
-		skipsOverwrite := []property.Skips{}
-		for _, skip := range bundle.Skips {
-			substitutesSkips[skip] = struct{}{}
-			substitutesForBundle, ok := subsForLinear[string(skip)]
-			for ok {
-				// consume the slice of substitutions
-				substitutesFor = substitutesForBundle.Name
-				// shouldn't skip yourself
-				if substitutesFor == bundle.Name {
-					break
+	for _, b := range bundleMap {
+		if len(b.Skips) != 0 {
+			substitutesSkips := make(map[property.Skips]struct{})
+			skipsOverwrite := []property.Skips{}
+			for _, skip := range b.Skips {
+				substitutesSkips[skip] = struct{}{}
+				substitutesForBundle, ok := subsForLinear[string(skip)]
+				for ok {
+					// consume the slice of substitutions
+					substitutesFor = substitutesForBundle.Name
+					// shouldn't skip yourself
+					if substitutesFor == b.Name {
+						break
+					}
+
+					substitutesSkips[property.Skips(substitutesFor)] = struct{}{}
+					substitutesForBundle, ok = subsForLinear[substitutesFor]
 				}
-				substitutesSkips[property.Skips(substitutesFor)] = struct{}{}
-				substitutesForBundle, ok = subsForLinear[substitutesFor]
 			}
+			for s := range substitutesSkips {
+				skipsOverwrite = append(skipsOverwrite, s)
+				b.Bundle.Properties = append(b.Bundle.Properties, property.MustBuildSkips(string(s)))
+			}
+			b.Skips = skipsOverwrite
 		}
-		for s := range substitutesSkips {
-			skipsOverwrite = append(skipsOverwrite, s)
-		}
-		bundle.Skips = skipsOverwrite
 	}
 
 	// If the bundle being added replaces a bundle that is substituted for
