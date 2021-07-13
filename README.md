@@ -7,7 +7,7 @@
 ```
 ( 
   cd /tmp && git clone https://github.com/release-engineering/dcm && \
-  cd dcm && go install . && cd ../ && rm -rf dcm
+  cd dcm && GOPROXY="https://proxy.golang.org|direct" go install . && cd ../ && rm -rf dcm
 )
 ```
 
