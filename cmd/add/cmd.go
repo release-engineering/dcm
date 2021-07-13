@@ -4,7 +4,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/joelanford/dcm/action"
+	"github.com/release-engineering/dcm/action"
 )
 
 func NewCmd() *cobra.Command {

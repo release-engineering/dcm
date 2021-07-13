@@ -1,4 +1,4 @@
-module github.com/joelanford/dcm
+module github.com/release-engineering/dcm
 
 go 1.16
 

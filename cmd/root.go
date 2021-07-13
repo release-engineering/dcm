@@ -3,9 +3,9 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/joelanford/dcm/cmd/add"
-	"github.com/joelanford/dcm/cmd/deprecatetruncate"
-	"github.com/joelanford/dcm/cmd/migrate"
+	"github.com/release-engineering/dcm/cmd/add"
+	"github.com/release-engineering/dcm/cmd/deprecatetruncate"
+	"github.com/release-engineering/dcm/cmd/migrate"
 )
 
 func Run() error {
