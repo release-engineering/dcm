@@ -6,7 +6,7 @@
 
 ```
 ( 
-  cd /tmp && git clone https://github.com/joelanford/dcm && \
+  cd /tmp && git clone https://github.com/release-engineering/dcm && \
   cd dcm && go install . && cd ../ && rm -rf dcm
 )
 ```
