@@ -109,7 +109,12 @@ func initDeclcfgFromBundle(ctx context.Context, reg image.Registry, bundle declc
 	}
 	init := action.Init{
 		Package:        imageInput.Bundle.Package,
-		DefaultChannel: imageInput.AnnotationsFile.GetDefaultChannelName(),
+	}
+	if imageInput.Bundle.Annotations != nil {
+		init.DefaultChannel = imageInput.Bundle.Annotations.DefaultChannelName
+		if init.DefaultChannel == "" {
+			init.DefaultChannel = imageInput.Bundle.Annotations.SelectDefaultChannel()
+		}
 	}
 	icons, err := imageInput.Bundle.Icons()
 	if err != nil {
