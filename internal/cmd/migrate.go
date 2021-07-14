@@ -1,14 +1,14 @@
-package migrate
+package cmd
 
 import (
 	"github.com/operator-framework/operator-registry/alpha/declcfg"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/release-engineering/dcm/action"
+	"github.com/release-engineering/dcm/internal/action"
 )
 
-func NewCmd() *cobra.Command {
+func newMigrateCmd() *cobra.Command {
 	var (
 		migrate action.Migrate
 	)

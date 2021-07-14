@@ -5,7 +5,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/release-engineering/dcm/cmd"
+	"github.com/release-engineering/dcm/internal/cmd"
 )
 
 func main() {
