@@ -1,13 +1,13 @@
-package deprecatetruncate
+package cmd
 
 import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/release-engineering/dcm/action"
+	"github.com/release-engineering/dcm/internal/action"
 )
 
-func NewCmd() *cobra.Command {
+func newDeprecateTruncateCmd() *cobra.Command {
 	var (
 		dp action.DeprecateTruncate
 	)
@@ -18,8 +18,7 @@ func NewCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			dp.FromDir = args[0]
 			dp.BundleImage = args[1]
-			log := logrus.New()
-			dp.Log = *log
+			dp.Log = logrus.New()
 
 			if err := dp.Run(cmd.Context()); err != nil {
 				dp.Log.Fatal(err)

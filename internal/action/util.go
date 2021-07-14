@@ -60,7 +60,7 @@ func newRegistry() (image.Registry, error) {
 	)
 }
 
-func destroyRegistry(reg image.Registry, log logrus.Logger) {
+func destroyRegistry(reg image.Registry, log *logrus.Logger) {
 	if err := reg.Destroy(); err != nil {
 		log.Warnf("destroy temporary image registry: %v", err)
 	}
@@ -227,7 +227,7 @@ func getDefaultChannel(ctx context.Context, reg image.Registry, bundleMap map[st
 	return defaultCh, nil
 }
 
-func addSubstitutesFor(bundleMap map[string]bundleProps, bundle bundleProps) error {
+func addSubstitutesFor(bundleMap map[string]bundleProps, bundle bundleProps) error { //nolint:gocyclo
 	subsForMap, err := buildSubsForMap(bundleMap)
 	if err != nil {
 		return err
@@ -405,7 +405,7 @@ func addSubstitutesFor(bundleMap map[string]bundleProps, bundle bundleProps) err
 		replaces = ch.Replaces
 	}
 	if len(replacesSet) > 1 {
-		return fmt.Errorf("bundle %q can only have 1 replaces value, found %d", len(replacesSet))
+		return fmt.Errorf("bundle %q can only have 1 replaces value, found %d", bundle.Name, len(replacesSet))
 	}
 	if replaces != "" {
 		substitutesForBundle, ok := subsForLinear[replaces]

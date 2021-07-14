@@ -21,7 +21,7 @@ type Add struct {
 	BundleImage string
 
 	OverwriteLatest bool
-	Log             logrus.Logger
+	Log             *logrus.Logger
 }
 
 func (a Add) Run(ctx context.Context) error {
@@ -108,7 +108,7 @@ func initDeclcfgFromBundle(ctx context.Context, reg image.Registry, bundle declc
 		return nil, fmt.Errorf("load bundle: %v", err)
 	}
 	init := action.Init{
-		Package:        imageInput.Bundle.Package,
+		Package: imageInput.Bundle.Package,
 	}
 	if imageInput.Bundle.Annotations != nil {
 		init.DefaultChannel = imageInput.Bundle.Annotations.DefaultChannelName
@@ -224,7 +224,7 @@ func (a Add) addChannelsToDescendents(bundleMap map[string]bundleProps, cur bund
 		if len(next.Channels) == 0 {
 			continue
 		}
-		addCh := property.Channel{ch.Name, next.Channels[0].Replaces}
+		addCh := property.Channel{Name: ch.Name, Replaces: next.Channels[0].Replaces}
 		found := false
 		for _, nch := range next.Channels {
 			if nch == addCh {

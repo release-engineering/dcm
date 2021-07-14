@@ -15,7 +15,16 @@ type DeprecateTruncate struct {
 	FromDir     string
 	BundleImage string
 
-	Log logrus.Logger
+	Log *logrus.Logger
+}
+
+func (d DeprecateTruncate) getBundleToDeprecate(bundles []declcfg.Bundle) (*declcfg.Bundle, error) {
+	for _, b := range bundles {
+		if b.Image == d.BundleImage {
+			return &b, nil
+		}
+	}
+	return nil, fmt.Errorf("could not find bundle in index with image %q", d.BundleImage)
 }
 
 func (d DeprecateTruncate) Run(ctx context.Context) error {
@@ -32,15 +41,9 @@ func (d DeprecateTruncate) Run(ctx context.Context) error {
 		return fmt.Errorf("load declarative configs: %v", err)
 	}
 
-	var depBundle *declcfg.Bundle
-	for _, b := range fromCfg.Bundles {
-		if b.Image == d.BundleImage {
-			depBundle = &b
-			break
-		}
-	}
-	if depBundle == nil {
-		return fmt.Errorf("could not find bundle in index with image %q", d.BundleImage)
+	depBundle, err := d.getBundleToDeprecate(fromCfg.Bundles)
+	if err != nil {
+		return err
 	}
 	for _, p := range depBundle.Properties {
 		if p.Type == "olm.deprecated" {

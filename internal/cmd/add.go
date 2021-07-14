@@ -1,13 +1,13 @@
-package add
+package cmd
 
 import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/release-engineering/dcm/action"
+	"github.com/release-engineering/dcm/internal/action"
 )
 
-func NewCmd() *cobra.Command {
+func newAddCmd() *cobra.Command {
 	var (
 		add action.Add
 	)
@@ -18,8 +18,7 @@ func NewCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			add.FromDir = args[0]
 			add.BundleImage = args[1]
-			log := logrus.New()
-			add.Log = *log
+			add.Log = logrus.New()
 
 			if err := add.Run(cmd.Context()); err != nil {
 				add.Log.Fatal(err)
