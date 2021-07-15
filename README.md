@@ -4,10 +4,17 @@
 
 ## Install
 
-```
+### Releases
+
+Binary downloads are available on the [releases](https://github.com/release-engineering/dcm/releases) page.
+
+### From source
+```bash
 ( 
-  cd /tmp && git clone https://github.com/release-engineering/dcm && \
-  cd dcm && GOPROXY="https://proxy.golang.org|direct" go install . && cd ../ && rm -rf dcm
+  TMPDIR=$(mktemp -d)
+  git clone https://github.com/release-engineering/dcm $TMPDIR
+  make -C $TMPDIR install
+  rm -rf $TMPDIR
 )
 ```
 
