@@ -3,7 +3,7 @@ SHELL:=/bin/bash
 export REPO = $(shell go list -m)
 export GO111MODULE=on
 export GOPROXY=https://proxy.golang.org|direct
-export CGO_ENABLED = 0
+export CGO_ENABLED = 1
 
 export GIT_VERSION = $(shell git describe --tags --always)
 export GIT_COMMIT = $(shell git rev-parse HEAD)
