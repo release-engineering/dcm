@@ -57,7 +57,7 @@ func (a Add) Run(ctx context.Context) error {
 		return fmt.Errorf("ensure declarative package directory %q: %v", packageDir, err)
 	}
 	a.Log.Infof("Loading declarative configs for package %q", addBundle.Package)
-	fromCfg, err := declcfg.LoadDir(packageDir)
+	fromCfg, err := declcfg.LoadFS(os.DirFS(packageDir))
 	if err != nil {
 		return fmt.Errorf("load declarative configs: %v", err)
 	}
