@@ -3,6 +3,7 @@ package action
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -36,7 +37,7 @@ func (d DeprecateTruncate) Run(ctx context.Context) error {
 	}
 
 	d.Log.Infof("Loading declarative configs")
-	fromCfg, err := declcfg.LoadDir(d.FromDir)
+	fromCfg, err := declcfg.LoadFS(os.DirFS(d.FromDir))
 	if err != nil {
 		return fmt.Errorf("load declarative configs: %v", err)
 	}

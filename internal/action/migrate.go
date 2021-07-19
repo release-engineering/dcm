@@ -35,8 +35,8 @@ func (m Migrate) Run(ctx context.Context) error {
 	}
 
 	r := action.Render{
-		Refs:      []string{m.IndexImage},
-		AllowMask: action.RefSqliteImage,
+		Refs:           []string{m.IndexImage},
+		AllowedRefMask: action.RefSqliteImage | action.RefSqliteFile,
 	}
 	if m.Registry != nil {
 		r.Registry = m.Registry
