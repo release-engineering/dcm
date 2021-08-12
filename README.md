@@ -2,6 +2,14 @@
 
 `dcm` is a purpose-built command line tool meant to help existing users of `opm` who build sqlite-based index images to gracefully transition to Declarative Config-based index images using imperative workflow commands similar to what exists in `opm`.
 
+## Support
+
+This tool is jointly maintained for internal use by Red Hat's OpenShift OLM team and EXD Container Pipelines team, and is tied to the lifecycle of the sqlite-to-DC operator catalog transition.
+
+This tool tracks the deprecation and EoL timelines of OLM's sqlite support. As of 5/11/2021, the tentative plan is:
+- Deprecation in OpenShift 4.9
+- EoL in OpenShift 4.11
+
 ## Install
 
 ### Releases
