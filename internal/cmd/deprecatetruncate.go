@@ -14,10 +14,10 @@ func newDeprecateTruncateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "deprecatetruncate <dcDir> <bundleImage>",
 		Short: "Deprecate a bundle from a declarative config directory",
-		Args:  cobra.ExactArgs(2),
+		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			dp.FromDir = args[0]
-			dp.BundleImage = args[1]
+			dp.BundleImages = args[1:]
 			dp.Log = logrus.New()
 
 			if err := dp.Run(cmd.Context()); err != nil {

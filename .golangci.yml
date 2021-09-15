@@ -3,15 +3,11 @@ linters:
   enable:
     - errcheck
     - goimports
-    - golint
-    - gosec
+    - revive
     - misspell
-    - scopelint
     - unconvert
     - unparam
-    - interfacer
     - nakedret
-    - gocyclo
     - dupl
     - goconst
     - lll

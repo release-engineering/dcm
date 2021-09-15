@@ -14,10 +14,10 @@ func newAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add <dcDir> <bundleImage>",
 		Short: "Add a bundle to a declarative config directory",
-		Args:  cobra.ExactArgs(2),
+		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			add.FromDir = args[0]
-			add.BundleImage = args[1]
+			add.BundleImages = args[1:]
 			add.Log = logrus.New()
 
 			if err := add.Run(cmd.Context()); err != nil {

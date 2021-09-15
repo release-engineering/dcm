@@ -11,7 +11,6 @@ import (
 
 	"github.com/operator-framework/operator-registry/alpha/action"
 	"github.com/operator-framework/operator-registry/alpha/declcfg"
-	"github.com/operator-framework/operator-registry/alpha/property"
 	"github.com/operator-framework/operator-registry/pkg/image"
 )
 
@@ -49,29 +48,16 @@ func (m Migrate) Run(ctx context.Context) error {
 	}
 
 	fmt.Printf("writing rendered declarative config to %q\n", m.OutputDir)
-	return writeToFS(*cfg, &diskWriter{}, m.OutputDir, m.WriteFunc)
+	return writeToFS(*cfg, m.OutputDir, m.WriteFunc)
 }
 
 const globalName = "__global"
 
-type fsWriter interface {
-	MkdirAll(path string, mode os.FileMode) error
-	WriteFile(path string, data []byte, mode os.FileMode) error
-}
-
-var _ fsWriter = &diskWriter{}
-
-type diskWriter struct{}
-
-func (w diskWriter) MkdirAll(path string, mode os.FileMode) error {
-	return os.MkdirAll(path, mode)
-}
-
-func (w diskWriter) WriteFile(path string, data []byte, mode os.FileMode) error {
-	return ioutil.WriteFile(path, data, mode)
-}
-
-func writeToFS(cfg declcfg.DeclarativeConfig, w fsWriter, rootDir string, writeFunc WriteFunc) error {
+func writeToFS(cfg declcfg.DeclarativeConfig, rootDir string, writeFunc WriteFunc) error {
+	channelsByPackage := map[string][]declcfg.Channel{}
+	for _, c := range cfg.Channels {
+		channelsByPackage[c.Package] = append(channelsByPackage[c.Package], c)
+	}
 	bundlesByPackage := map[string][]declcfg.Bundle{}
 	for _, b := range cfg.Bundles {
 		bundlesByPackage[b.Package] = append(bundlesByPackage[b.Package], b)
@@ -85,29 +71,27 @@ func writeToFS(cfg declcfg.DeclarativeConfig, w fsWriter, rootDir string, writeF
 		othersByPackage[pkgName] = append(othersByPackage[pkgName], o)
 	}
 
-	if err := w.MkdirAll(rootDir, 0777); err != nil {
+	if err := os.MkdirAll(rootDir, 0777); err != nil {
 		return fmt.Errorf("mkdir %q: %v", rootDir, err)
 	}
 
 	for _, p := range cfg.Packages {
 		fcfg := declcfg.DeclarativeConfig{
 			Packages: []declcfg.Package{p},
+			Channels: channelsByPackage[p.Name],
 			Bundles:  bundlesByPackage[p.Name],
 			Others:   othersByPackage[p.Name],
 		}
 		pkgDir := filepath.Join(rootDir, p.Name)
-		if err := w.MkdirAll(pkgDir, 0777); err != nil {
+		if err := os.RemoveAll(pkgDir); err != nil {
 			return err
 		}
-		filename := filepath.Join(pkgDir, "index.yaml")
-		if err := writeFile(fcfg, w, filename, writeFunc); err != nil {
+		if err := os.MkdirAll(pkgDir, 0777); err != nil {
 			return err
 		}
-
-		for _, b := range fcfg.Bundles {
-			if err := writeObjectFiles(b, w, pkgDir); err != nil {
-				return fmt.Errorf("write object files for bundle %q: %v", b.Name, err)
-			}
+		filename := filepath.Join(pkgDir, "catalog.yaml")
+		if err := writeFile(fcfg, filename, writeFunc); err != nil {
+			return err
 		}
 	}
 
@@ -116,42 +100,19 @@ func writeToFS(cfg declcfg.DeclarativeConfig, w fsWriter, rootDir string, writeF
 			Others: globals,
 		}
 		filename := filepath.Join(rootDir, fmt.Sprintf("%s.yaml", globalName))
-		if err := writeFile(gcfg, w, filename, writeFunc); err != nil {
+		if err := writeFile(gcfg, filename, writeFunc); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func writeObjectFiles(b declcfg.Bundle, w fsWriter, baseDir string) error {
-	props, err := property.Parse(b.Properties)
-	if err != nil {
-		return fmt.Errorf("parse properties: %v", err)
-	}
-	if len(props.BundleObjects) != len(b.Objects) {
-		return fmt.Errorf("expected %d properties of type %q, found %d", len(b.Objects), property.TypeBundleObject, len(props.BundleObjects))
-	}
-	for i, p := range props.BundleObjects {
-		if p.IsRef() {
-			objPath := filepath.Join(baseDir, p.GetRef())
-			objDir := filepath.Dir(objPath)
-			if err := w.MkdirAll(objDir, 0777); err != nil {
-				return fmt.Errorf("create directory %q for bundle object ref %q: %v", objDir, p.GetRef(), err)
-			}
-			if err := w.WriteFile(objPath, []byte(b.Objects[i]), 0666); err != nil {
-				return fmt.Errorf("write bundle object for ref %q: %v", p.GetRef(), err)
-			}
-		}
-	}
-	return nil
-}
-
-func writeFile(cfg declcfg.DeclarativeConfig, w fsWriter, filename string, writeFunc WriteFunc) error {
+func writeFile(cfg declcfg.DeclarativeConfig, filename string, writeFunc WriteFunc) error {
 	buf := &bytes.Buffer{}
 	if err := writeFunc(cfg, buf); err != nil {
 		return fmt.Errorf("write to buffer for %q: %v", filename, err)
 	}
-	if err := w.WriteFile(filename, buf.Bytes(), 0666); err != nil {
+	if err := os.WriteFile(filename, buf.Bytes(), 0666); err != nil {
 		return fmt.Errorf("write file %q: %v", filename, err)
 	}
 	return nil
