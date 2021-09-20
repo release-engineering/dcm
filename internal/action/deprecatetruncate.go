@@ -4,37 +4,52 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
-	"sort"
+	"strings"
 
 	"github.com/operator-framework/operator-registry/alpha/declcfg"
-	"github.com/operator-framework/operator-registry/alpha/property"
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 type DeprecateTruncate struct {
-	FromDir     string
-	BundleImage string
+	FromDir      string
+	BundleImages []string
 
 	Log *logrus.Logger
 }
 
-func (d DeprecateTruncate) getBundleToDeprecate(bundles []declcfg.Bundle) (*declcfg.Bundle, error) {
+func (d DeprecateTruncate) getBundlesToDeprecate(bundles []declcfg.Bundle) ([]declcfg.Bundle, error) {
+	depImages := sets.NewString(d.BundleImages...)
+	foundImages := sets.NewString()
+	var found []declcfg.Bundle
 	for _, b := range bundles {
-		if b.Image == d.BundleImage {
-			return &b, nil
+		if depImages.Has(b.Image) {
+			foundImages.Insert(b.Image)
+			found = append(found, b)
 		}
 	}
-	return nil, fmt.Errorf("could not find bundle in index with image %q", d.BundleImage)
+	notFound := depImages.Difference(foundImages)
+	if notFound.Len() > 0 {
+		return nil, fmt.Errorf("could not find bundles in the index: %q", strings.Join(notFound.List(), ","))
+	}
+	return found, nil
 }
 
 func (d DeprecateTruncate) Run(ctx context.Context) error {
+	// Deprecatetruncate for FBC is just removing the deprecated bundle and its tail.
+	// In FBC, there is no requirement that every bundle referenced by a replaces value is in
+	// the channel or package, so keeping a deprecated bundle around is unnecessary.
 	//
-	// Make sure root declarative config directory exists
-	//
-	if err := ensureDir(d.FromDir); err != nil {
-		return fmt.Errorf("ensure root declarative config directory %q: %v", d.FromDir, err)
-	}
+	//   Step 1: Find the olm.bundle blob for the requested deprecation image
+	//   Step 2: For each channel in the bundle's package:
+	//     - build the replaces chain of entries
+	//     - remove each entry from the channel, starting at the
+	//       deprecated bundle and ending at the end of the tail
+	//     - keep track of all removed entry names
+	//   Step 3:
+	//     - Search all channels for removed entries
+	//     - If a removed entry cannot be found in any channel, remove
+	//       the olm.bundle blob for that entry from the catalog
 
 	d.Log.Infof("Loading declarative configs")
 	fromCfg, err := declcfg.LoadFS(os.DirFS(d.FromDir))
@@ -42,113 +57,94 @@ func (d DeprecateTruncate) Run(ctx context.Context) error {
 		return fmt.Errorf("load declarative configs: %v", err)
 	}
 
-	depBundle, err := d.getBundleToDeprecate(fromCfg.Bundles)
+	if _, err := declcfg.ConvertToModel(*fromCfg); err != nil {
+		return fmt.Errorf("input catalog is invalid: %v", err)
+	}
+
+	depBundles, err := d.getBundlesToDeprecate(fromCfg.Bundles)
 	if err != nil {
 		return err
 	}
-	for _, p := range depBundle.Properties {
-		if p.Type == "olm.deprecated" {
-			return fmt.Errorf("bundle %q is already deprecated", depBundle.Name)
-		}
-	}
 
-	bundlePackage := depBundle.Package
-	packageCfg := &declcfg.DeclarativeConfig{}
-	for _, p := range fromCfg.Packages {
-		if p.Name == bundlePackage {
-			packageCfg.Packages = []declcfg.Package{p}
-			break
-		}
-	}
-
-	bundleMap := map[string]bundleProps{}
-	for _, b := range fromCfg.Bundles {
-		b := b
-		if b.Package == bundlePackage {
-			packageCfg.Bundles = append(packageCfg.Bundles, b)
-		}
-		bp, err := newBundleProps(&b)
-		if err != nil {
-			return err
-		}
-		bundleMap[b.Name] = *bp
-	}
-
-	heads, err := getHeads(bundleMap)
-	if err != nil {
-		return fmt.Errorf("get channel heads: %v", err)
-	}
-
-	d.Log.Infof("Deprecating bundle %q", depBundle.Name)
-	type deprecated struct{}
-	v := &deprecated{}
-	property.AddToScheme("olm.deprecated", v)
-	depBundleProps := bundleMap[depBundle.Name]
-	depBundleProps.Bundle.Properties = append(depBundleProps.Bundle.Properties, property.MustBuild(v))
-
-	toRemove := bundlePropsSet{}
-	for _, ch := range depBundleProps.Channels {
-		if ch.Replaces != "" {
-			rep, ok := bundleMap[ch.Replaces]
-			if !ok {
+	for _, depBundle := range depBundles {
+		removedFromChannel := sets.NewString()
+		for i, ch := range fromCfg.Channels {
+			// We only care about the bundle's package.
+			if ch.Package != depBundle.Package {
 				continue
 			}
-			toRemove.insert(rep.Name, rep)
-		}
-	}
+			// Build a map of all of our channel entries
+			entries := map[string]declcfg.ChannelEntry{}
+			for _, e := range ch.Entries {
+				entries[e.Name] = e
+			}
+			// If the deprecated bundle is not in this channel,
+			// no changes are necessary here, so continue to the
+			// next channel.
+			if _, ok := entries[depBundle.Name]; !ok {
+				continue
+			}
 
-	for cur := toRemove.pop(); cur != nil; cur = toRemove.pop() {
-		if _, ok := heads[cur.Name]; ok {
-			return fmt.Errorf("cannot remove channel head %q", cur.Name)
-		}
-		for _, ch := range cur.Channels {
-			if ch.Replaces != "" {
-				rep, ok := bundleMap[ch.Replaces]
-				if !ok {
-					continue
+			// Build the replaces chain in this channel.
+			chain := map[string]string{}
+			for _, e := range ch.Entries {
+				chain[e.Name] = e.Replaces
+			}
+
+			// Traverse the chain starting at the deprecated bundle, building a set
+			// of the entries we need to remove.
+			toRemove := sets.NewString()
+			for cur := depBundle.Name; cur != ""; cur = chain[cur] {
+				toRemove.Insert(cur)
+			}
+			removedFromChannel = removedFromChannel.Union(toRemove)
+
+			// Remove the tail entries.
+			tmpEntries := ch.Entries[:0]
+			for _, e := range ch.Entries {
+				if !toRemove.Has(e.Name) {
+					tmpEntries = append(tmpEntries, e)
 				}
-				toRemove.insert(rep.Name, rep)
+			}
+			ch.Entries = tmpEntries
+			fromCfg.Channels[i] = ch
+		}
+
+		// fully remove empty channels
+		tmpChannels := fromCfg.Channels[:0]
+		for _, ch := range fromCfg.Channels {
+			if len(ch.Entries) > 0 {
+				tmpChannels = append(tmpChannels, ch)
 			}
 		}
-		for _, skip := range cur.Skips {
-			if string(skip) != "" {
-				sk, ok := bundleMap[string(skip)]
-				if !ok {
-					continue
+		fromCfg.Channels = tmpChannels
+
+		presentInOtherChannels := sets.NewString()
+		for _, ch := range fromCfg.Channels {
+			if ch.Package != depBundle.Package {
+				continue
+			}
+			for _, e := range ch.Entries {
+				if removedFromChannel.Has(e.Name) {
+					presentInOtherChannels.Insert(e.Name)
 				}
-				toRemove.insert(sk.Name, sk)
 			}
 		}
-		d.Log.Infof("Removing bundle %q and its incoming replaces edges", cur.Name)
-		if err := removeReplacesFor(bundleMap, cur.Name); err != nil {
-			return err
+		fullyRemoved := removedFromChannel.Difference(presentInOtherChannels)
+
+		tmpBundles := fromCfg.Bundles[:0]
+		for _, b := range fromCfg.Bundles {
+			if b.Package == depBundle.Package && fullyRemoved.Has(b.Name) {
+				continue
+			}
+			tmpBundles = append(tmpBundles, b)
 		}
-		delete(bundleMap, cur.Name)
+		fromCfg.Bundles = tmpBundles
+	}
+	if _, err := declcfg.ConvertToModel(*fromCfg); err != nil {
+		return fmt.Errorf("updated file-based catalog is invalid: %v", err)
 	}
 
-	fromCfg.Bundles = []declcfg.Bundle{}
-	for _, b := range bundleMap {
-		b.Bundle.Properties = property.Deduplicate(b.Bundle.Properties)
-		fromCfg.Bundles = append(fromCfg.Bundles, *b.Bundle)
-	}
-	sort.Slice(fromCfg.Bundles, func(i, j int) bool {
-		return fromCfg.Bundles[i].Name < fromCfg.Bundles[j].Name
-	})
-	packageDir := filepath.Join(d.FromDir, bundlePackage)
-	d.Log.Infof("Writing updated declarative config for package %q", bundlePackage)
-	return writeCfg(*fromCfg, packageDir)
-}
-
-type bundlePropsSet map[string]bundleProps
-
-func (s bundlePropsSet) insert(key string, value bundleProps) {
-	s[key] = value
-}
-
-func (s bundlePropsSet) pop() *bundleProps {
-	for k, v := range s {
-		delete(s, k)
-		return &v
-	}
-	return nil
+	d.Log.Infof("Writing updated file-based catalog")
+	return writeToFS(*fromCfg, d.FromDir, declcfg.WriteYAML)
 }
