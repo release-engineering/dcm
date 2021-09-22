@@ -5,13 +5,15 @@ builds:
 - id: dcm
   main: ./
   binary: dcm
+  flags:
+  - -tags=json1
   asmflags:
   - all=-trimpath={{ dir .Env.PWD }}
   gcflags:
   - all=-trimpath={{ dir .Env.PWD }}
   ldflags:
-  - -s
-  - -w
+  - -s -w
+  - -extldflags=-static
   - -X {{ .Env.REPO }}/internal/version.GitVersion={{.Env.GIT_VERSION}}
   - -X {{ .Env.REPO }}/internal/version.GitCommit={{.Env.GIT_COMMIT}}
   - -X {{ .Env.REPO }}/internal/version.GitCommitTime={{.Env.GIT_COMMIT_TIME}}

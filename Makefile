@@ -14,11 +14,12 @@ GOLANGCILINT_VERSION = 1.42.1
 GORELEASER_VERSION = 0.179.0
 
 GO_BUILD_ARGS = \
+  -tags=json1 \
   -gcflags "all=-trimpath=$(shell dirname $(shell pwd))" \
   -asmflags "all=-trimpath=$(shell dirname $(shell pwd))" \
   -ldflags " \
-    -s \
-    -w \
+    -s -w \
+    -extldflags=static \
     -X '$(REPO)/internal/version.GitVersion=$(GIT_VERSION)' \
     -X '$(REPO)/internal/version.GitCommit=$(GIT_COMMIT)' \
     -X '$(REPO)/internal/version.GitCommitTime=$(GIT_COMMIT_TIME)' \
