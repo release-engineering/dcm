@@ -19,7 +19,6 @@ GO_BUILD_ARGS = \
   -asmflags "all=-trimpath=$(shell dirname $(shell pwd))" \
   -ldflags " \
     -s -w \
-    -extldflags=static \
     -X '$(REPO)/internal/version.GitVersion=$(GIT_VERSION)' \
     -X '$(REPO)/internal/version.GitCommit=$(GIT_COMMIT)' \
     -X '$(REPO)/internal/version.GitCommitTime=$(GIT_COMMIT_TIME)' \
