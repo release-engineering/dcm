@@ -1,3 +1,7 @@
+# :exclamation: ARCHIVED :exclamation:
+
+ This repository has been archived and is no longer under active development. The team behind `dcm` abandoned the approach of this tool in favor of using existing imperative `opm` commands followed by a conversion to the file-based catalog format using `opm render` or `opm migrate`
+
 # Declarative Config Migrator (DCM)
 
 `dcm` is a purpose-built command line tool meant to help existing users of `opm` who build sqlite-based index images to gracefully transition to Declarative Config-based index images using imperative workflow commands similar to what exists in `opm`.
